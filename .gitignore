@@ -1,14 +1,10 @@
 cat > .gitignore <<'EOF'
-# Terraform build artifacts (НЕ коммитить)
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
 
-# оставляем lockfile в репо
 !.terraform.lock.hcl
 EOF
 
-git rm -r --cached .terraform/ 2>/dev/null || true
-git add .gitignore .terraform.lock.hcl
-git commit -m "chore: ignore .terraform; keep .terraform.lock.hcl"
+
