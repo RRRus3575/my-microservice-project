@@ -1,0 +1,19 @@
+cat > .gitignore <<'EOF'
+# Terraform build artifacts
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# keep lockfile tracked
+!.terraform.lock.hcl
+EOF
