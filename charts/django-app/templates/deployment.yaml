@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "django-app.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "django-app.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.autoscaling.minReplicas | default 2 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "django-app.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "django-app.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+{{- with .Values.podAnnotations }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+    spec:
+      containers:
+        - name: django
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "django-app.fullname" . }}-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+{{ toYaml .Values.resources | indent 12 }}

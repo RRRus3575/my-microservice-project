@@ -1,4 +1,3 @@
-# Single NAT Gateway (cost-conscious). For HA, create one per AZ.
 resource "aws_eip" "nat" {
 domain = "vpc"
 tags = { Name = "${var.vpc_name}-nat-eip" }
@@ -7,13 +6,12 @@ tags = { Name = "${var.vpc_name}-nat-eip" }
 
 resource "aws_nat_gateway" "this" {
 allocation_id = aws_eip.nat.id
-subnet_id = aws_subnet.public["0"].id # place NAT in first public subnet
+subnet_id = aws_subnet.public["0"].id 
 tags = { Name = "${var.vpc_name}-nat" }
 depends_on = [aws_internet_gateway.this]
 }
 
 
-# Public route table (shared by all public subnets)
 resource "aws_route_table" "public" {
 vpc_id = aws_vpc.this.id
 route {
@@ -31,7 +29,6 @@ route_table_id = aws_route_table.public.id
 }
 
 
-# Private route table (shared by all private subnets)
 resource "aws_route_table" "private" {
 vpc_id = aws_vpc.this.id
 route {

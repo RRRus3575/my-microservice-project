@@ -1,0 +1,26 @@
+image:
+  repository: 782388527425.dkr.ecr.us-west-2.amazonaws.com/lesson-7-ecr-rus01  
+  tag: v1
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8000
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+
+env:
+  DJANGO_SETTINGS_MODULE: "config.settings"  
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+
+podAnnotations: {}
+
+resources: {}
+

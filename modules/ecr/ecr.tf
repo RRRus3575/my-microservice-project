@@ -3,7 +3,7 @@ data "aws_caller_identity" "current" {}
 
 resource "aws_ecr_repository" "this" {
 name = var.ecr_name
-image_tag_mutability = "MUTABLE" # change to IMMUTABLE for stricter tagging
+image_tag_mutability = "MUTABLE" 
 
 
 image_scanning_configuration {
@@ -22,7 +22,6 @@ Name = var.ecr_name
 }
 
 
-# Minimal explicit policy (account root already has access; this makes it obvious)
 resource "aws_ecr_repository_policy" "this" {
 repository = aws_ecr_repository.this.name
 policy = jsonencode({
@@ -49,3 +48,5 @@ Action = [
 ]
 })
 }
+
+

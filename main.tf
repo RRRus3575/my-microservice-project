@@ -66,17 +66,17 @@ default = true
 
 
 
-module "s3_backend" {
-source = "./modules/s3-backend"
-bucket_name = var.backend_bucket_name
-table_name = var.backend_table_name
-}
+# module "s3_backend" {
+# source = "./modules/s3-backend"
+# bucket_name = var.backend_bucket_name
+# table_name = var.backend_table_name
+# }
 
-module "s3_backend_west" {
-  source      = "./modules/s3-backend"
-  bucket_name = "my-tfstate-3575857895123-lesson-5-west" 
-  table_name  = "terraform-locks-west"
-}
+# module "s3_backend_west" {
+#   source      = "./modules/s3-backend"
+#   bucket_name = "my-tfstate-3575857895123-lesson-5-west" 
+#   table_name  = "terraform-locks-west"
+# }
 
 
 
@@ -96,3 +96,24 @@ source = "./modules/ecr"
 ecr_name = var.ecr_name
 scan_on_push = var.scan_on_push
 }
+
+
+
+module "eks" {
+  source              = "./modules/eks"
+  cluster_name        = "lesson-7-ecr-rus01"
+  vpc_id              = module.vpc.vpc_id
+  private_subnet_ids  = module.vpc.private_subnet_ids
+  public_subnet_ids   = module.vpc.public_subnet_ids
+  node_instance_types = ["t3.small"]
+  desired_size        = 2
+  min_size            = 2
+  max_size            = 6
+}
+
+
+output "ecr_repo_url" {
+  value       = module.ecr.repository_url
+  description = "ECR repository URL"
+}
+

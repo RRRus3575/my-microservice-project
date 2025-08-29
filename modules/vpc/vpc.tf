@@ -16,7 +16,6 @@ tags = { Name = "${var.vpc_name}-igw" }
 }
 
 
-# Build maps idx->cidr to preserve order and map to AZs
 locals {
 public_map = { for idx, cidr in var.public_subnets : tostring(idx) => cidr }
 private_map = { for idx, cidr in var.private_subnets : tostring(idx) => cidr }
