@@ -20,6 +20,17 @@ env:
   DEBUG: "False"
   ALLOWED_HOSTS: "*"
 
+ingress:
+  enabled: false
+  className: nginx
+  host: yourdomain.com
+  path: /
+  pathType: Prefix
+  tls: false
+  clusterIssuer: letsencrypt-prod
+  tlsSecretName: ""
+
+
 podAnnotations: {}
 
 resources: {}

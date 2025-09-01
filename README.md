@@ -96,6 +96,32 @@ helm upgrade --install django-app ./charts/django-app -n default
 kubectl get pods,svc,hpa -n default
 ```
 
+---
+
+## Ingress + TLS (NGINX Ingress Controller + cert-manager)
+
+- NGINX Ingress Controller
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+```
+
+- Cert-manager
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
+helm upgrade --install cert-manager jetstack/cert-manager -n cert-manager --create-namespace
+```
+
+- ClusterIssuer (Let's Encrypt)
+```bash
+kubectl apply -f clusterissuer.yaml
+```
+
+---
+
 ## Destroy
 ```bash
 terraform destroy -var-file="terraform.tfvars"
