@@ -1,0 +1,10 @@
+applications:
+  - name: django-app
+    project: default
+    source:
+      repoURL: https://github.com/your/repo.git
+      targetRevision: main
+      path: charts/django-app
+    destination:
+      namespace: apps
+      server: https://kubernetes.default.svc

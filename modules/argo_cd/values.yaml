@@ -1,0 +1,11 @@
+configs:
+  params:
+    server.insecure: true
+server:
+  service:
+    type: LoadBalancer
+  extraArgs: ["--insecure"]
+applicationSet:
+  enabled: true
+dex:
+  enabled: false

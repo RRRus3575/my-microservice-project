@@ -1,0 +1,55 @@
+controller:
+  installPlugins:
+    - kubernetes:4280.v9d38868a_9274
+    - workflow-aggregator:604.vb_9c9a_89e0a_2e
+    - git:5.5.2
+    - configuration-as-code:1932.v0c58f1d87c87
+    - matrix-auth:3.2.2
+    - credentials:1337.v60b_d7b_c7b_c9f
+    - job-dsl:1.87
+  JCasC:
+    defaultConfig: true
+  serviceType: LoadBalancer
+  tag: "lts"
+  admin:
+    createSecret: true
+    user: admin
+    password: admin123
+
+  additionalAgents:
+    kaniko:
+      customJenkinsLabels: ["kaniko"]
+      image: gcr.io/kaniko-project/executor:latest
+      command: "/busybox/sh"
+      args: "-c cat"
+      ttyEnabled: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+      env:
+        - name: AWS_REGION
+          value: "eu-central-1"
+      volumeMounts:
+        - name: jenkins-docker-config
+          mountPath: /kaniko/.docker/
+
+  volumes:
+    - name: jenkins-docker-config
+      secret:
+        secretName: docker-config
+
+  rbac:
+    create: true
+
+agent:
+  resources:
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
