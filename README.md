@@ -1,139 +1,179 @@
+# lesson-7 — Terraform on AWS (S3 backend, DynamoDB locks, VPC, ECR, EKS, Helm)
 
-# CI/CD: Jenkins + Helm + Terraform + Argo CD (Полная версия)
-
-Этот README объединяет информацию из базового `README_CICD.md` и обновлённые детали.
-
----
-
-## Что реализовано
-
-- **Terraform-модули**
-  - `modules/jenkins` — установка Jenkins через Helm (namespace, values.yaml, outputs).
-  - `modules/argo_cd` — установка Argo CD через Helm, развёртывание `Application` и `repository` секретов через встроенный App-of-Apps chart.
-
-- **Jenkinsfile**
-  - Использует Kubernetes agent с двумя контейнерами:
-    - **kaniko** — сборка и пуш Docker-образа в Amazon ECR;
-    - **gitops** (alpine с git+yq) — обновление `charts/django-app/values.yaml:image.tag` и пуш изменений в Git.
-  - Теги образа: `git SHA` и `build-$BUILD_NUMBER`.
-
-- **Helm-чарты**
-  - `charts/django-app/` — твой Django app (Deployment, Service, HPA, ConfigMap).
-  - `modules/argo_cd/charts/argocd-apps/` — App-of-Apps для Argo CD:
-    - `application.yaml` — создаёт `Application` для Django;
-    - `repository.yaml` — добавляет секрет для приватного Git-репозитория;
-    - `values.yaml` — описывает список приложений и репозиториев.
-
-- **README.md**
-  - Два варианта:
-    - `README_CICD.md` — базовое описание.
-    - `README_FULL.md` (этот) — расширенное с обновлёнными деталями.
+## Prerequisites
+- Terraform >= 1.6
+- AWS credentials available in your shell (e.g. via `aws configure` or environment variables)
+- kubectl and helm installed locally
+- Docker installed (for building and pushing images)
+- Choose a **globally-unique** S3 bucket name for state, e.g. `my-tfstate-<account-id>-lesson-7`
 
 ---
 
-## Подключение модулей в main.tf
+## Files
+- `backend.tf` — S3 backend configuration (enable AFTER bootstrapping)
+- `main.tf` — providers + module wiring
+- `outputs.tf` — consolidated outputs
+- `terraform.tfvars` — variable values (bucket, vpc, ecr_name, etc.)
+- `modules/s3-backend` — S3 bucket (versioned) + DynamoDB table for state locks
+- `modules/vpc` — VPC with 3 public + 3 private subnets, IGW, single NAT GW, shared RTs
+- `modules/ecr` — ECR repository with scan-on-push and a minimal policy
+- `modules/eks` — EKS cluster with worker nodes
+- `charts/django-app` — Helm chart for the Django app (Deployment, Service, ConfigMap, HPA)
 
-```hcl
-data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
-}
+---
 
-module "jenkins" {
-  source           = "./modules/jenkins"
-  cluster_endpoint = module.eks.cluster_endpoint
-  cluster_ca       = module.eks.cluster_certificate_authority_data
-  cluster_token    = data.aws_eks_cluster_auth.this.token
-  values_yaml      = file("./modules/jenkins/values.yaml")
-}
+## ⚠️ Backend bootstrapping (first run)
+1. Edit `terraform.tfvars` and set:
+   - `backend_bucket_name` = your unique bucket  
+   - `backend_table_name` = `terraform-locks` (or your preferred name)
 
-module "argo_cd" {
-  source            = "./modules/argo_cd"
-  cluster_endpoint  = module.eks.cluster_endpoint
-  cluster_ca        = module.eks.cluster_certificate_authority_data
-  cluster_token     = data.aws_eks_cluster_auth.this.token
-  values_yaml       = file("./modules/argo_cd/values.yaml")
-  apps_repo_url     = "https://github.com/<you>/<helm-repo>.git"
-  apps_repo_rev     = "main"
-  helm_chart_path   = "charts/django-app"
-  app_name          = "django-app"
-}
+2. **Temporarily disable** the remote backend by renaming `backend.tf` to `backend.tf.disabled` (or comment its contents).
+
+3. Init and create only the backend resources locally:
+```bash
+terraform init -backend=false
+terraform apply -target=module.s3_backend
+```
+
+4. Restore `backend.tf` and initialize remote state, migrating automatically:
+```bash
+mv backend.tf.disabled backend.tf
+terraform init -migrate-state
 ```
 
 ---
 
-## Jenkins: креденшели и секреты
-
-- **Kubernetes Secret `aws-creds`** в namespace `jenkins`:
-  ```yaml
-  apiVersion: v1
-  kind: Secret
-  metadata:
-    name: aws-creds
-    namespace: jenkins
-  stringData:
-    region: eu-central-1
-    access_key_id: <AWS_KEY>
-    secret_access_key: <AWS_SECRET>
-  ```
-
-- **docker-config** (опционально) для аутентификации в ECR, если не используешь IRSA.
-
-- **Jenkins Credentials**:
-  - `helm-git-cred` — доступ к Helm-репозиторию (Git user/password или token).
-
-- **Параметры job**:
-  - `ECR_URL` — например, `123456789.dkr.ecr.eu-central-1.amazonaws.com`;
-  - `HELM_REPO_URL` — https-URL до Git-репозитория с чартами.
+## Create all infrastructure
+```bash
+terraform plan -var-file="terraform.tfvars"
+terraform apply -auto-approve -var-file="terraform.tfvars"
+```
 
 ---
 
-## Argo CD
-
-- **Namespace**: `argocd` (Terraform создаёт автоматически).
-- **Service**: `LoadBalancer` (адрес смотри через `kubectl get svc -n argocd`).
-- **Initial admin password**:
-  ```bash
-  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-  ```
-
-- **Repository secret**: создаётся через `repository.yaml` в App-of-Apps chart.
-
-- **Sync policy**: автоматическая (Argo CD подхватывает изменения из Git и обновляет кластер).
+## Connect to EKS cluster
+```bash
+aws eks update-kubeconfig --name $(terraform output -raw eks_cluster_name) --region us-west-2
+kubectl get nodes
+```
 
 ---
 
-## Jenkins (инициализация)
+## ECR usage
 
-После деплоя Jenkins:  
+- Authenticate Docker to ECR
+```bash
+aws ecr get-login-password --region us-west-2 \
+| docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_url | cut -d'/' -f1)
+```
+
+- Build & push an image
+```bash
+export REPO=$(terraform output -raw ecr_repository_url)
+docker build -t $REPO:v1 .
+docker push $REPO:v1
+```
+
+---
+
+## Deploy Django app with Helm
+
+- Install metrics-server (required for HPA)
+```bash
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm repo update
+helm install metrics-server metrics-server/metrics-server \
+  --namespace kube-system \
+  --set args={"--kubelet-insecure-tls","--kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP"}
+```
+- Deploy the application
+```bash
+helm upgrade --install django-app ./charts/django-app -n default
+```
+
+- Verify resources
+```bash
+kubectl get pods,svc,hpa -n default
+```
+
+---
+
+## Ingress + TLS (NGINX Ingress Controller + cert-manager)
+
+- NGINX Ingress Controller
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+```
+
+- Cert-manager
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
+helm upgrade --install cert-manager jetstack/cert-manager -n cert-manager --create-namespace
+```
+
+- ClusterIssuer (Let's Encrypt)
+```bash
+kubectl apply -f clusterissuer.yaml
+```
+
+---
+
+## Destroy
+```bash
+terraform destroy -var-file="terraform.tfvars"
+```
+
+
+---
+
+# CI/CD with Jenkins + Argo CD
+
+## Jenkins + Terraform + Helm
+
+- Jenkins is installed via the Terraform module `modules/jenkins`, which uses the Helm chart.
+- The configuration includes a Kubernetes Agent with two containers:
+- **kaniko** — for building and publishing a Docker image to Amazon ECR;
+- **gitops** — Alpine with git+yq, used to update the Helm chart and push changes to Git.
+
+### Jenkinsfile (pipeline)
+1. Checkout the source code.
+2. Kaniko builds the Docker image and pushes it to ECR (tags: `git SHA` and `build-$BUILD_NUMBER`).
+3. Update `charts/django-app/values.yaml:image.tag` in the Helm repository.
+4. Commit + push to `main`.
+5. Argo CD automatically synchronizes changes to the cluster.
+
+## Argo CD + Terraform + Helm
+
+- Argo CD is installed via the Terraform module `modules/argo_cd`.
+- App-of-Apps approach is used:
+- `application.yaml` creates an Application resource for the Django application;
+- `repository.yaml` creates a Secret to access the Git repository.
+- Sync policy = **automated** (Argo CD immediately pulls changes from Git).
+
+### Access
+- Jenkins:
 ```bash
 kubectl get secret --namespace jenkins cd-jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 -d
 ```
-
-Открой Service типа `LoadBalancer` в браузере и залогинься `admin / <password>`.
-
----
-
-## Поток CI/CD
-
-```mermaid
-flowchart LR
-  A[Developer Commit] --> B[Jenkins Pipeline]
-  B --> C[Kaniko build image]
-  C --> D[ECR Push]
-  D --> E[Update Helm values.yaml]
-  E --> F[Git push main]
-  F --> G[Argo CD Application]
-  G --> H[Sync to EKS Cluster]
+- Argo CD:
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d 
 ```
 
----
+## CI/CD flow
 
-## Критерии выполнены ✅
+```mermaid
+flowchart LR 
+A[Developer Commit] --> B[Jenkins Pipeline] 
+B --> C[Kaniko build image] 
+C --> D[ECR Push] 
+D --> E[Update Helm values.yaml] 
+E --> F[Git push main] 
+F --> G[Argo CD Application] 
+G --> H[Sync to EKS Cluster]
+```
 
-- Jenkins + Terraform + Helm (20)
-- Jenkins pipeline (build+push+update Git) (30)
-- Argo CD + Terraform + Helm (20)
-- Argo CD Application auto-sync (20)
-- README.md (базовый и расширенный) (10)
-
-Итого: **100/100**.
