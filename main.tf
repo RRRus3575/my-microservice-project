@@ -29,3 +29,12 @@ module "rds" {
     Env     = "dev"
   }
 }
+
+module "monitoring" {
+  source        = "./modules/monitoring"
+  namespace     = "monitoring"
+  chart_version = "65.5.0"
+  # за потреби можна прокинути кастомні values:
+  # values_yaml = file("${path.module}/monitoring-values.override.yaml")
+}
+

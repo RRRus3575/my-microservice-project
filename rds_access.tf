@@ -6,4 +6,4 @@ resource "aws_security_group_rule" "app_to_db" {
   security_group_id        = module.rds.security_group_id
   source_security_group_id = module.eks.node_security_group_id
 }
-*/
+
